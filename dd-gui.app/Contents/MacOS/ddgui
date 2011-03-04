@@ -1,0 +1,222 @@
+#!/usr/bin/php
+<?php
+
+// dd-gui, by Matt Sephton <http://www.gingerbeardman.com>
+// 0.21, 17 Sept 2009
+
+start:
+$conf = <<<EOCONF
+	# Set window title
+	*.title = dd-gui
+
+	# Introductory text
+	warning.type = text
+	warning.default = WARNING[return]If you choose the wrong device as the destination, you can erase important data! Proceed with caution.
+	warning.width = 400
+
+	# Add a field
+	if.type = textfield
+	if.label = Source:
+	if.width = 400
+	if.tooltip = Examples: /dev/disk1, /files/dd.img
+	#if.default = /file.img 
+
+	# Add a field
+	of.type = textfield
+	of.label = Destination:
+	of.width = 400
+	of.tooltip = Examples: /files/dd.img, /dev/disk1
+	#of.default = /dev/disk1
+
+	# Add a button with label
+	help.type = button
+	help.label = Help
+
+	# Add a button with label
+	devices.type = button
+	devices.label =  Devices
+
+	# Add a default button with label
+	dd.type = defaultbutton
+	dd.label = Start
+
+	# Add a cancel button with default label
+	quit.type = cancelbutton
+EOCONF;
+
+# Pass the configuration string to the Pashua module
+$result = pashua_run($conf);
+
+if ($result['help']) {
+	$conf = <<<HELP
+	# Set window title
+	*.title = dd-gui usage
+
+	# Introductory text
+	warning.type = text
+	warning.default = Both source and destination can be either a system device from /dev or a file with the extension .img[return][return]Read from a device to a file[return]Source: /dev/disk1[return]Destination: /files/dd.img[return][return]Write from a file to a device[return]Source: /files/dd.img[return]Destination: /dev/disk1
+	warning.width = 400
+	
+	# Add a default button with default label
+	ok.type = defaultbutton
+	ok.label = OK
+HELP;
+
+	# Pass the configuration string to the Pashua module
+	$result = pashua_run($conf);
+	if($result['ok']) goto start;
+}
+
+if ($result['devices']) {
+	$bar = dirname(__FILE__).'/bar';
+	$ddc = dirname(__FILE__).'/dd.command';
+	$script = <<< DEVLIST
+#!/bin/sh
+clear
+echo 'Devices:'
+echo
+diskutil list
+DEVLIST;
+
+	file_put_contents($ddc, $script);
+	exec("chmod +x $ddc");
+	exec("open $ddc");
+	goto start;
+}
+
+// print "	 Pashua returned the following array:\n";
+// print_r($result);
+
+$if = $result['if'];
+$of = $result['of'];
+
+if ($result['dd']) {
+	//get size of file
+	$size = filesize($if);
+	//if no filesize
+	if ($size == 0) {
+		//get size of device
+		$out = exec("diskutil info $if | grep 'Size'");
+		preg_match('/\(([0-9]+) Bytes\)/i', $out, $matches);
+		$size = $matches[1];
+	}
+	$bar = dirname(__FILE__).'/bar';
+	$ddc = dirname(__FILE__).'/dd.command';
+	$script = <<< BASH
+#!/bin/sh
+clear
+echo 'from: $if'
+echo 'size: $size bytes'
+echo
+echo '  to: $of'
+echo
+
+if [ -b "$of" ]
+then
+	diskutil quiet unmountDisk $of
+	sleep 1
+fi
+
+touch $of
+dd if=$if | $bar -s $size > $of
+
+if [ -b "$of" ]
+then
+	sleep 1
+	diskutil quiet mountDisk $of
+fi
+
+open -R $of
+printf '\a'
+
+echo
+echo 'Done! You may close this window.'
+echo
+BASH;
+	file_put_contents($ddc, $script);
+	exec("chmod +x $ddc");
+	exec("open $ddc");
+}
+
+/**
+ * Wrapper function for accessing Pashua from PHP
+ *
+ * @param string Configuration string to pass to Pashua
+ * @param optional string Configuration string's text encoding (default: "macroman")
+ * @param optional string Absolute filesystem path to directory containing Pashua
+ * @return array Associative array of values returned by Pashua
+ * @author Carsten Bluem <carsten@bluem.net>
+ * @version 2005-04-26
+ */
+function pashua_run($conf, $encoding = 'macroman', $apppath = null) {
+
+	// Check for safe mode
+	if (ini_get('safe_mode')) {
+		die("\n  Sorry, to use Pashua you will have to disable\n".
+		    "  safe mode or change the function pashua_run()\n".
+		    "  to fit your environment.\n\n");
+	}
+
+	// Write configuration string to temporary config file
+	$configfile = tempnam('/tmp', 'Pashua_');
+	$fp = fopen($configfile, 'w') or user_error("Error trying to open $configfile", E_USER_ERROR);
+	fwrite($fp, $conf);
+	fclose ($fp);
+	
+	// Try to figure out the path to pashua
+	$bundlepath = "Pashua.app/Contents/MacOS/Pashua";
+	$path = '';
+
+	if ($apppath) {
+		// A directory path was given
+		$path = str_replace('//', '/', $apppath.'/'.$bundlepath);
+	}
+	else {
+		// Try find Pashua in one of the common places
+		$paths = array(
+			dirname(__FILE__).'/Pashua',
+			dirname(__FILE__)."/$bundlepath",
+			"./$bundlepath",
+			"/Applications/$bundlepath",
+			"$_SERVER[HOME]/Applications/$bundlepath"
+		);
+		// Then, look in each of these places
+		foreach ($paths as $searchpath) {
+			if (file_exists($searchpath) and
+				is_executable($searchpath)) {
+				// Looks like Pashua is in $dir --> exit the loop
+				$path = $searchpath;
+				break;
+			}
+		}
+	}
+
+	// Raise an error if we didn't find the application
+	if (empty($path)) {
+		user_error('Unable to locate Pashua', E_USER_ERROR);
+	}
+
+	// Call pashua binary with config file as argument and read result
+	$cmd = preg_match('#^\w+$#', $encoding) ? "'$path' -e $encoding $configfile" : "'$path' $configfile";
+	$result = `$cmd`;
+
+	// Remove config file
+	unlink($configfile);
+	
+	// Init result array
+	$parsed = array();
+
+	// Parse result
+	foreach (explode("\n", $result) as $line) {
+		preg_match('/^(\w+)=(.*)$/', $line, $matches);
+		if (empty($matches) or empty($matches[1])) {
+			continue;
+		}
+		$parsed[$matches[1]] = $matches[2];
+	}
+
+	return $parsed;
+
+} // function pashua_run($conf)
+
+?>
