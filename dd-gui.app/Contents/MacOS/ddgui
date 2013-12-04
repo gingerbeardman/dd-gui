@@ -117,8 +117,8 @@ then
 	sleep 1
 fi
 
-touch $of
-dd if=$if | $bar -s $size > $of
+sudo touch $of
+sudo dd if=$if | $bar -s $size > $of
 
 if [ -b "$of" ]
 then
