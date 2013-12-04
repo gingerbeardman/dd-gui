@@ -16,10 +16,10 @@ The app has only been tested on Mac OS 10.6.x
 **If you choose the wrong device as the destination, you can erase important data! Proceed with caution.**
 
 ##Changelog
-17 September: Added option to list devices (0.21)  
-16 September: Added automatic unmounting and mounting of devices, plus more robust determination of source size (0.20)  
-07 September: Initial release (0.10)  
-2009
+2013-11-04: Added sudo to fix permissions issue on Mac OS 10.9 Mavericks (0.22)
+2009-09-17: Added option to list devices (0.21)  
+2009-09-16: Added automatic unmounting and mounting of devices, plus more robust determination of source size (0.20)  
+2009-09-07: Initial release (0.10)  
 
 ##Future versions
 I may add support for all dd features, just like [Air Imager](http://air-imager.sourceforge.net/) on Linux.
