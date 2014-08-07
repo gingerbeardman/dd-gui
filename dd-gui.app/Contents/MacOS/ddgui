@@ -118,7 +118,7 @@ then
 fi
 
 sudo touch $of
-if=$if | sudo sh -c '$bar -s $size > $of'
+dd if=$if | sudo sh -c '$bar -s $size > $of'
 
 if [ -b "$of" ]
 then
